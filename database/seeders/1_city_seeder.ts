@@ -7,6 +7,15 @@ export default class extends BaseSeeder {
   async run() {
     const filePath = app.publicPath('cities.json')
     const citiesData = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-    await City.createMany(citiesData)
+    for (const cityData of citiesData) {
+      await City.create({
+        department_code: cityData.department_code,
+        insee_code: cityData.insee_code,
+        name: cityData.name,
+        zip_code: cityData.zip_code,
+        lat: cityData.lat,
+        lon: cityData.lon
+      })
+    }
   }
 }
