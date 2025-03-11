@@ -20,6 +20,7 @@ router
         router.post('/', [CityController, 'createCity'])
       })
       .prefix('/city')
+    router.get('/cities', [CityController, 'getCities'])
     router.get('/_health', async ({ response }: HttpContext) => {
       return response.status(204)
     })
