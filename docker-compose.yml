@@ -1,0 +1,12 @@
+services:
+  db:
+    image: postgres
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=app
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
