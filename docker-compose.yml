@@ -1,7 +1,30 @@
 services:
+  app:
+    build: .
+    container_name: app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      SESSION_DRIVER: cookie
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: root
+      DB_PASSWORD: root
+      APP_KEY: Pg_e79wvsahZGUYC5dmZ3c2BpmUteW_l
+      DB_DATABASE: app
+    ports:
+      - "3333:3333"
+
   db:
     image: postgres
     container_name: postgres
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
@@ -10,3 +33,8 @@ services:
       - POSTGRES_DB=app
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "root", "-d", "app"]
+      interval: 5s
+      retries: 5
+      start_period: 10s
