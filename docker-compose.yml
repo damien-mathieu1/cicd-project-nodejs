@@ -38,3 +38,34 @@ services:
       interval: 5s
       retries: 5
       start_period: 10s
+
+  prometheus:
+      image: prometheus:latest
+      container_name: prometheus_container
+      ports :
+        - "9090:9090"
+      volumes:
+        - ./prom.yml:/etc/prometheus/prometheus.yml
+      networks:
+        monitoring
+      restart: always
+
+  grafana:
+      image: grafana/grafana
+      container_name: grafana_container
+      ports:
+        - "3000:3000"
+      volumes:
+        - grafana_data:/var/lib/grafana
+      networks:
+        monitoring
+      restart: always
+
+volumes:
+  grafana_data:
+
+networks:
+  monitoring:
+      driver: bridge
+      
+      
