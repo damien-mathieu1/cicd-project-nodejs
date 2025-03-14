@@ -13,8 +13,6 @@ export default class CityController {
   async createCity({ request, response }: HttpContext) {
     const { department_code, insee_code, name, zip_code, lat, lon } = request.body()
 
-    console.log(request.body())
-
     const city = await City.create({
       department_code: department_code,
       insee_code: insee_code,
