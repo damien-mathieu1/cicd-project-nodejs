@@ -41,7 +41,7 @@ jobs:
           - 5432:5432
         env:
           POSTGRES_USER: root
-          POSTGRES_DATABASE: app
+          POSTGRES_DB: app
           POSTGRES_PASSWORD: root
         options: >-
           --health-cmd pg_isready
