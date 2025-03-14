@@ -22,7 +22,6 @@ on:
       - 'ISSUE_TEMPLATE.md'
 
 jobs:
-
   check-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -58,7 +57,7 @@ jobs:
 
   build-adonis:
     runs-on: ubuntu-latest
-    needs: [ check-changes ]
+    needs: [check-changes]
     if: needs.check-changes.outputs.code_changed == 'true'
     defaults:
       run:
@@ -80,7 +79,7 @@ jobs:
 
   test-adonis:
     runs-on: ubuntu-latest
-    needs: [ check-changes ]
+    needs: [check-changes]
     if: needs.check-changes.outputs.code_changed == 'true'
     services:
       postgres:
@@ -111,7 +110,7 @@ jobs:
 
   push-image:
     runs-on: ubuntu-latest
-    needs: [ test-adonis, check-changes, build-adonis ]  # Attendre que les tests passent avant de pousser
+    needs: [test-adonis, check-changes, build-adonis] # Attendre que les tests passent avant de pousser
     if: needs.check-changes.outputs.docker_changed == 'true' || needs.check-changes.outputs.code_changed == 'true'
     steps:
       - name: Checkout code
@@ -128,5 +127,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: city-api:latest
-
+          tags: damienmathieu/city-api:latest
