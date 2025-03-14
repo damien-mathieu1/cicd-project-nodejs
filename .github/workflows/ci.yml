@@ -1,5 +1,5 @@
 name: CI - Adonis
-on: 
+on:
   push:
     branches:
       - main
@@ -14,13 +14,13 @@ jobs:
     defaults:
       run:
         working-directory: ./
-    
+
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
           version: 9
-    
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -32,8 +32,7 @@ jobs:
       - name: Build Project
         run: pnpm build
 
-      
-test-adonis:
+  test-adonis:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,7 +44,9 @@ test-adonis:
         ports:
           - 5432:5432
         env:
-        POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: root
+          POSTGRES_DATABASE: app
+          POSTGRES_PASSWORD: root
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -58,7 +59,7 @@ test-adonis:
       - uses: pnpm/action-setup@v4
         with:
           version: 9
-    
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -71,13 +72,8 @@ test-adonis:
         run: sleep 10
 
       - name: Test Project
-        run: pnpm test
+        run: pnpm run test
 
-        env:
-
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-    
     build:
 
       runs-on: ubuntu-latest
@@ -93,4 +89,3 @@ test-adonis:
             push: true
             tags: city-api:latest
 
-      
