@@ -55,6 +55,11 @@ jobs:
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
 
+      # Add this step before the Trivy scan
+      - name: Pull Docker image from cache
+        run: |
+          docker pull damienmathieu/city-api:unstable || echo "Image not found in cache"
+
       - name: Run Trivy Scanner image for vulnerabilities
         uses: aquasecurity/trivy-action@0.28.0
         with:
