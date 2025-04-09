@@ -98,7 +98,7 @@ jobs:
         with:
           context: .
           push: false
-          tags: damienmathieu/city-api:latest
+          tags: damienmathieu/city-api:unstable
           cache-from: type=gha
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
@@ -106,7 +106,7 @@ jobs:
       - name: Run Trivy Scanner image for vulnerabilities
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: damienmathieu/city-api:latest
+          image-ref: damienmathieu/city-api:unstable
           format: table
           severity: HIGH,CRITICAL
 
@@ -116,7 +116,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: damienmathieu/city-api:latest
+          tags: damienmathieu/city-api:unstable
           cache-from: type=gha
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
