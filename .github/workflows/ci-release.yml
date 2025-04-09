@@ -30,10 +30,14 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: damienmathieu/city-api:${{ env.VERSION }}
+          tags: |
+            damienmathieu/city-api:${{ env.VERSION }}
+            damienmathieu/city-api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
 
       - name: Show pushed image tag
-        run: echo "Docker image city-api:${{ env.VERSION }} !"
+        run: |
+          echo "Docker image city-api:${{ env.VERSION }} pushed!"
+          echo "Docker image city-api:latest pushed!"
