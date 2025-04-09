@@ -34,7 +34,6 @@ jobs:
             damienmathieu/city-api:${{ env.VERSION }}
             damienmathieu/city-api:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
 
       - name: Show pushed image tag
