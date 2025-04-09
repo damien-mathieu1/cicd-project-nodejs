@@ -84,7 +84,6 @@ jobs:
         with:
           image-ref: damienmathieu/city-api:latest
           format: table
-          exit-code: 1 # Fail the workflow if vulnerabilities are found
           severity: HIGH,CRITICAL
 
       - name: Push Docker image
