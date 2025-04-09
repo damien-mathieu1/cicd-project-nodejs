@@ -23,7 +23,8 @@ on:
       - 'database/**'
       - 'package.json'
       - 'package-lock.json'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/ci-all.yml'
+      - '.github/workflows/ci-release.yml'
 
 jobs:
   push-image:
