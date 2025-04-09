@@ -1,4 +1,4 @@
-name: CI - Adonis
+name: CI - Test & build
 on:
   push:
     branches:
@@ -10,6 +10,10 @@ on:
       - 'LICENSE.md'
       - 'PULL_REQUEST_TEMPLATE.md'
       - 'ISSUE_TEMPLATE.md'
+      - '**/Dockerfile'
+      - '**/docker-compose.yml'
+      - '.github/workflows/ci-release.yml'
+      - '.github/workflows/ci-docker-image.yml'
   pull_request:
     branches:
       - main
@@ -20,45 +24,13 @@ on:
       - 'LICENSE.md'
       - 'PULL_REQUEST_TEMPLATE.md'
       - 'ISSUE_TEMPLATE.md'
+      - '**/Dockerfile'
+      - '**/docker-compose.yml'
+      - '.github/workflows/ci-docker-image.yml'
 
 jobs:
-  check-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      code_changed: ${{ steps.filter.outputs.code }}
-      docker_changed: ${{ steps.filter.outputs.docker }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Detect changes
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            code:
-              - 'public/**'
-              - 'resources/**'
-              - 'start/**'
-              - 'tests/**'
-              - 'app/**'
-              - 'bin/**'
-              - 'app/**'
-              - 'ace.js'
-              - 'adonis'
-              - 'config/**'
-              - 'database/**'
-              - 'package.json'
-              - 'package-lock.json'
-              - '.github/workflows/ci.yml'
-            docker:
-              - '**/Dockerfile'
-              - 'docker-compose.yml'
-
   build-adonis:
     runs-on: ubuntu-latest
-    needs: [check-changes]
-    if: needs.check-changes.outputs.code_changed == 'true'
     defaults:
       run:
         working-directory: ./
@@ -69,7 +41,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm install
@@ -79,8 +51,6 @@ jobs:
 
   test-adonis:
     runs-on: ubuntu-latest
-    needs: [check-changes]
-    if: needs.check-changes.outputs.code_changed == 'true'
     services:
       postgres:
         image: postgres:latest
@@ -110,8 +80,7 @@ jobs:
 
   push-image:
     runs-on: ubuntu-latest
-    needs: [test-adonis, check-changes, build-adonis] # Attendre que les tests passent avant de pousser
-    if: needs.check-changes.outputs.docker_changed == 'true' || needs.check-changes.outputs.code_changed == 'true'
+    needs: [test-adonis, build-adonis] # Attendre que les tests passent avant de pousser
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
