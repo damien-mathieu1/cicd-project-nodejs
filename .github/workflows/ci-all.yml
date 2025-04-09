@@ -111,7 +111,7 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: Push Docker image
-        if: success() # Only push if the scan passes
+        if: success() && github.event_name != 'pull_request' # Only push if the scan passes and not in a pull request
         uses: docker/build-push-action@v6
         with:
           context: .
