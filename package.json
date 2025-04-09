@@ -60,6 +60,7 @@
     "@adonisjs/vite": "^4.0.0",
     "@japa/api-client": "^3.0.3",
     "@vinejs/vine": "^3.0.0",
+    "cross-spawn": "^7.0.6",
     "edge.js": "^6.2.1",
     "luxon": "^3.5.0",
     "pg": "^8.13.3",
