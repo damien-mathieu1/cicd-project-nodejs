@@ -1,2 +1,32 @@
+# Ignore build artifacts
 build
+dist
+
+# Ignore Git-related files
 .git
+.github
+.gitignore
+
+# Ignore node modules and lock files
+node_modules
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Ignore environment files
+.env
+.env.local
+.env.*.local
+
+# Ignore IDE/editor config files
+*.swp
+*.idea
+*.vscode
+*.log
+
+# Ignore Docker-related files
+Dockerfile*
+docker-compose*
+
+# Ignore MD
+*.md
