@@ -23,6 +23,10 @@ on:
       - 'PULL_REQUEST_TEMPLATE.md'
       - 'ISSUE_TEMPLATE.md'
       - '.github/workflows/ci-docker-image.yml'
+      - '**/Dockerfile'
+      - '**/docker-compose.yml'
+      - '**/.dockerignore'
+      - '**/docker-entrypoint.sh'
 
 jobs:
   build-adonis:
