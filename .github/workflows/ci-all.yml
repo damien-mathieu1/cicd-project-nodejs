@@ -102,6 +102,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
+          load: true
 
       - name: Run Trivy Scanner image for vulnerabilities
         uses: aquasecurity/trivy-action@0.28.0
