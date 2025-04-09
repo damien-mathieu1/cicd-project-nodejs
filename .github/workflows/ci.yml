@@ -127,7 +127,27 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push
+      - name: Build Docker image
+        id: build-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: damienmathieu/city-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          github-token: ${{ secrets.TOKEN_GITHUB }}
+
+      - name: Run Trivy Scanner image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: damienmathieu/city-api:latest
+          format: table
+          exit-code: 1 # Fail the workflow if vulnerabilities are found
+          severity: HIGH,CRITICAL
+
+      - name: Push Docker image
+        if: success() # Only push if the scan passes
         uses: docker/build-push-action@v6
         with:
           context: .
