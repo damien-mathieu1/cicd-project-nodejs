@@ -1,4 +1,4 @@
-name: CI - Adonis
+name: CI - Docker Image
 on:
   push:
     branches:

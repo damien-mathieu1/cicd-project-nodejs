@@ -1,4 +1,4 @@
-name: CI - Test & build
+name: CI - Test and Docker Image
 on:
   push:
     branches:
