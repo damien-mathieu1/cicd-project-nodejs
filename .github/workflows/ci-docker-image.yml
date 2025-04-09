@@ -71,5 +71,4 @@ jobs:
           push: true
           tags: damienmathieu/city-api:unstable
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
