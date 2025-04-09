@@ -52,7 +52,7 @@ jobs:
               - 'package-lock.json'
               - '.github/workflows/ci.yml'
             docker:
-              - 'Dockerfile'
+              - '**/Dockerfile'
               - 'docker-compose.yml'
 
   build-adonis:
