@@ -24,31 +24,6 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci.yml'
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - 'README.md'
-      - 'CONTRIBUTING.md'
-      - 'CODE_OF_CONDUCT.md'
-      - 'LICENSE.md'
-      - 'PULL_REQUEST_TEMPLATE.md'
-      - 'ISSUE_TEMPLATE.md'
-      - 'public/**'
-      - 'resources/**'
-      - 'start/**'
-      - 'tests/**'
-      - 'app/**'
-      - 'bin/**'
-      - 'app/**'
-      - 'ace.js'
-      - 'adonis'
-      - 'config/**'
-      - 'database/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/ci-release.yml'
-      - 'ci-all.yml'
 
 jobs:
   push-image:
