@@ -5,6 +5,8 @@ import MetricsController from '#controllers/MetricsController'
 
 router.on('/').render('pages/home')
 
+console.log('Hello World 2')
+
 router
   .group(() => {
     router
