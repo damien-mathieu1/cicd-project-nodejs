@@ -28,7 +28,6 @@ jobs:
       - name: Extract commit SHA
         id: vars
         run: |
-          echo "short_sha=$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
           echo "full_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
@@ -37,9 +36,7 @@ jobs:
         with:
           context: .
           push: false
-          tags: |
-            damienmathieu/city-api:${{ steps.vars.outputs.short_sha }}
-            damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          tags: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
@@ -48,7 +45,7 @@ jobs:
       - name: Run Trivy Scanner for vulnerabilities
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: damienmathieu/city-api:${{ steps.vars.outputs.short_sha }}
+          image-ref: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
           format: table
           severity: HIGH,CRITICAL
           exit-code: 0  # Don't fail on vulnerabilities for PRs
@@ -59,9 +56,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: |
-            damienmathieu/city-api:${{ steps.vars.outputs.short_sha }}
-            damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          tags: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
           cache-from: type=gha
           github-token: ${{ secrets.TOKEN_GITHUB }}
 
@@ -70,19 +65,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const shortSha = '${{ steps.vars.outputs.short_sha }}';
+            const fullSha = '${{ steps.vars.outputs.full_sha }}';
             const body = `## 🐋 Docker Image Built and Pushed
 
-            **Image tags:**
-            - \`damienmathieu/city-api:${shortSha}\`
-            - \`damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}\`
+            **Image tag:**
+            - \`damienmathieu/city-api:${fullSha}\`
 
             **Pull command:**
             \`\`\`bash
-            docker pull damienmathieu/city-api:${shortSha}
+            docker pull damienmathieu/city-api:${fullSha}
             \`\`\`
 
-            This image will be used for preprod deployment.`;
+            This image will be automatically deployed to preprod when you add the \`deploy-preprod\` label.`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
