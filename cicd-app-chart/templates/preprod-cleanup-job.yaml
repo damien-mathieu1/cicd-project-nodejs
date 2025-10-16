@@ -1,7 +1,7 @@
 {{- if and .Values.prNumber .Values.sharedPostgres }}
 # Cleanup job for preprod environments
-# This job runs when the Helm release is deleted (pre-delete hook)
-# It removes the preprod database from the shared PostgreSQL instance
+# This job runs BEFORE ArgoCD deletes the Application (PreDelete hook)
+# It removes the preprod database from the shared PostgreSQL instance in the default namespace
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -10,11 +10,9 @@ metadata:
     {{- include "cicd-app-chart.labels" . | nindent 4 }}
     app.kubernetes.io/component: cleanup
   annotations:
-    # Helm hook: run this job before deleting the release
-    helm.sh/hook: pre-delete
-    helm.sh/hook-weight: "-5"
-    # Delete the job after it succeeds
-    helm.sh/hook-delete-policy: hook-succeeded,hook-failed
+    # ArgoCD hook: run this job before deleting the application
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   ttlSecondsAfterFinished: 300  # Delete job 5 minutes after completion
   backoffLimit: 3
