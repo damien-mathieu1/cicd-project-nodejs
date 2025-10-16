@@ -1,7 +1,7 @@
 {{- if and .Values.prNumber .Values.sharedPostgres }}
 # Cleanup job for preprod environments
 # This job runs BEFORE ArgoCD deletes the Application (PreDelete hook)
-# It removes the preprod database from the shared PostgreSQL instance in the default namespace
+# It removes the preprod database from the shared PostgreSQL instance and deletes the namespace
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,7 +12,8 @@ metadata:
   annotations:
     # ArgoCD hook: run this job before deleting the application
     argocd.argoproj.io/hook: PreDelete
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   ttlSecondsAfterFinished: 300  # Delete job 5 minutes after completion
   backoffLimit: 3
@@ -24,7 +25,9 @@ spec:
         app.kubernetes.io/component: cleanup
     spec:
       restartPolicy: Never
-      containers:
+      serviceAccountName: {{ include "cicd-app-chart.fullname" . }}-cleanup
+      initContainers:
+        # Step 1: Clean up the database first
         - name: cleanup-db
           image: postgres:16
           env:
@@ -64,5 +67,24 @@ spec:
                 echo "⚠️ Database $PREPROD_DB does not exist, nothing to clean up"
               fi
 
-              echo "🎉 Cleanup completed"
+              echo "🎉 Database cleanup completed"
+      containers:
+        # Step 2: Delete the namespace
+        - name: cleanup-namespace
+          image: bitnami/kubectl:latest
+          env:
+            - name: NAMESPACE
+              value: "preprod-pr-{{ .Values.prNumber }}"
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "🗑️ Deleting namespace: $NAMESPACE"
+
+              # Delete the namespace
+              kubectl delete namespace $NAMESPACE --ignore-not-found=true --timeout=60s
+
+              echo "✅ Namespace $NAMESPACE deleted successfully"
+              echo "🎉 Full cleanup completed"
 {{- end }}
