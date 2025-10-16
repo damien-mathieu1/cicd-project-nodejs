@@ -1,14 +1,63 @@
-# Preprod Deployment Workflow
+# Preprod Deployment Workflow with ApplicationSet
 
-This document describes how to deploy and test preprod environments for Pull Requests.
+This document describes how to deploy and test preprod environments for Pull Requests using ArgoCD ApplicationSet.
 
 ## Overview
 
-This project uses **GitOps with ArgoCD** to manage deployments:
+This project uses **GitOps with ArgoCD ApplicationSet** to automatically manage preprod deployments:
 - **Production**: Auto-deployed from `main` branch to `default` namespace
-- **Preprod**: Manually deployed from PR branches to isolated `preprod-pr-{number}` namespaces
+- **Preprod**: Auto-deployed from PR branches with `deploy-preprod` label to isolated `preprod-pr-{number}` namespaces
 
-## Quick Start: Deploy a Preprod
+## How It Works
+
+```
+1. Dev creates PR
+   ↓
+2. Dev comments "/deploy-preprod"
+   ↓
+3. GitHub Action adds "deploy-preprod" label
+   ↓
+4. ArgoCD ApplicationSet detects label (~3 min)
+   ↓
+5. ApplicationSet creates Application automatically
+   ↓
+6. Application deploys preprod automatically
+   ↓
+7. PR closed → Label removed → Preprod deleted
+```
+
+**Key benefit**: ArgoCD runs in your local cluster and polls GitHub. No need for GitHub to access your machine!
+
+## Setup (One-time)
+
+### 1. Create GitHub Personal Access Token
+
+Follow: [`.argocd/SETUP_GITHUB_TOKEN.md`](.argocd/SETUP_GITHUB_TOKEN.md)
+
+**Summary:**
+1. Go to https://github.com/settings/tokens?type=beta
+2. Create fine-grained token with:
+   - Repository: `cicd-project-nodejs`
+   - Permissions: Pull requests (Read-only)
+3. Create secret in cluster:
+```bash
+kubectl create secret generic github-token \
+  --from-literal=token=ghp_YOUR_TOKEN_HERE \
+  -n argocd
+```
+
+### 2. Deploy the ApplicationSet
+
+```bash
+kubectl apply -f .argocd/preprod-applicationset.yaml
+```
+
+Verify it's running:
+```bash
+kubectl get applicationset -n argocd
+```
+
+## Usage: Deploy a Preprod
 
 ### 1. Create a Pull Request
 
@@ -21,56 +70,56 @@ git push origin feat/awesome-feature
 
 ### 2. Deploy Preprod
 
-When your feature is ready to test, comment on your PR:
+When your feature is ready to test, **comment on your PR**:
 
 ```
 /deploy-preprod
 ```
 
-The GitHub Action will:
-1. Create an ArgoCD Application: `cicd-project-pr-{number}`
-2. Create an isolated namespace: `preprod-pr-{number}`
-3. Comment back with access instructions
+**What happens:**
+1. GitHub Action adds the `deploy-preprod` label
+2. ArgoCD ApplicationSet detects the label (polls every 3 minutes)
+3. ApplicationSet automatically creates the Application
+4. Application automatically syncs and deploys
 
-### 3. Sync the Application
+**Timeline:** ~3-5 minutes total
 
-The application is created but **not automatically synced**. You need to manually sync it:
+### 3. Access Your Preprod
 
-**Option A: ArgoCD UI** (Recommended)
-1. Open ArgoCD: http://localhost:8080
-2. Find your application: `cicd-project-pr-{number}`
-3. Click **Sync** → **Synchronize**
-
-**Option B: CLI**
-```bash
-kubectl patch application cicd-project-pr-{NUMBER} -n argocd \
-  --type merge \
-  -p '{"metadata": {"annotations": {"argocd.argoproj.io/refresh": "hard"}}}'
-```
-
-### 4. Access Your Preprod
-
-Once synced, access your preprod:
+Once deployed (check ArgoCD UI or `kubectl get pods -n preprod-pr-{NUMBER}`):
 
 ```bash
 # Port-forward (easiest)
 kubectl port-forward -n preprod-pr-{NUMBER} \
   svc/cicd-project-pr-{NUMBER}-cicd-app-chart 8{NUMBER}:80
 
-# Then open: http://localhost:8{NUMBER}
-```
-
-Example for PR #123:
-```bash
+# Example for PR #123:
 kubectl port-forward -n preprod-pr-123 \
   svc/cicd-project-pr-123-cicd-app-chart 8123:80
 
-# Open: http://localhost:8123
+# Then open: http://localhost:8123
 ```
 
-### 5. Cleanup
+**Or via NodePort** (if your cluster has external node IPs):
+- NodePort: `30000 + PR_NUMBER`
+- Example PR #123: `http://<node-ip>:30123`
 
-When you close or merge the PR, the preprod is **automatically deleted**.
+### 4. Destroy Preprod (Optional)
+
+To manually destroy before closing the PR:
+
+```
+/destroy-preprod
+```
+
+This removes the label, triggering ApplicationSet to delete the preprod.
+
+### 5. Automatic Cleanup
+
+When you **close or merge the PR**, the preprod is automatically deleted:
+1. GitHub Action removes the `deploy-preprod` label
+2. ApplicationSet detects removal (~3 minutes)
+3. Application and all resources deleted
 
 ## Architecture
 
@@ -78,17 +127,19 @@ When you close or merge the PR, the preprod is **automatically deleted**.
 - **Application**: `cicd-project-nodejs`
 - **Namespace**: `default`
 - **Branch**: `main`
-- **Sync**: Automatic (every push to main)
+- **Managed by**: Manual Application manifest
+- **Sync**: Automatic (push to main → deploy)
 - **Values**: `values.yaml` (full resources)
-- **Access**: `http://localhost:3333` (via port-forward)
 
 ### Preprod Environments
-- **Application**: `cicd-project-pr-{NUMBER}`
-- **Namespace**: `preprod-pr-{NUMBER}`
-- **Branch**: Feature branch (e.g., `feat/awesome`)
-- **Sync**: Manual (trigger via ArgoCD UI)
+- **Application**: `cicd-project-pr-{NUMBER}` (auto-created)
+- **Namespace**: `preprod-pr-{NUMBER}` (auto-created)
+- **Branch**: PR branch (e.g., `feat/awesome`)
+- **Managed by**: ApplicationSet
+- **Trigger**: `deploy-preprod` label
+- **Sync**: Automatic
 - **Values**: `values-preprod.yaml` (reduced resources)
-- **Access**: `http://localhost:8{NUMBER}` or NodePort `30000 + {NUMBER}`
+- **Access**: Port-forward or NodePort `30000+{NUMBER}`
 
 ## Resource Isolation
 
@@ -96,185 +147,225 @@ Each preprod has:
 - ✅ Isolated namespace
 - ✅ Isolated PostgreSQL database
 - ✅ Reduced resources (CPU/Memory)
-- ✅ Separate NodePort (30000 + PR number)
+- ✅ Automatic NodePort (30000 + PR number)
 - ✅ Independent from production
+- ✅ Automatic cleanup on PR close
+
+## Commands Reference
+
+### Deploy preprod
+Comment on PR: `/deploy-preprod`
+
+### Destroy preprod manually
+Comment on PR: `/destroy-preprod`
+
+### Check preprod status
+```bash
+# List all preprods
+kubectl get applications -n argocd -l app.kubernetes.io/environment=preprod
+
+# Check specific preprod
+kubectl get application cicd-project-pr-123 -n argocd
+
+# Check pods
+kubectl get pods -n preprod-pr-123
+
+# Check service
+kubectl get svc -n preprod-pr-123
+```
+
+### Access preprod
+```bash
+# Port-forward
+kubectl port-forward -n preprod-pr-123 svc/cicd-project-pr-123-cicd-app-chart 8123:80
+
+# Or get NodePort
+kubectl get svc -n preprod-pr-123 cicd-project-pr-123-cicd-app-chart -o jsonpath='{.spec.ports[0].nodePort}'
+```
+
+### View logs
+```bash
+kubectl logs -n preprod-pr-123 -l app.kubernetes.io/name=cicd-app-chart
+```
+
+### Manually sync in ArgoCD
+1. Open ArgoCD UI: http://localhost:8080
+2. Find application: `cicd-project-pr-{NUMBER}`
+3. Click **Refresh** → **Hard Refresh**
+4. Click **Sync** → **Synchronize**
 
 ## Configuration Files
 
 ```
 .argocd/
-├── production-application.yaml       # Prod ArgoCD Application
-├── preprod-application-template.yaml # Template for preprods
+├── production-application.yaml     # Prod Application (manual)
+├── preprod-applicationset.yaml     # ApplicationSet (auto preprods)
+├── SETUP_GITHUB_TOKEN.md          # Token setup guide
 └── README.md
 
 .github/workflows/
-├── deploy-preprod.yml     # Deploy preprod on /deploy-preprod comment
-└── cleanup-preprod.yml    # Cleanup preprod when PR closes
+├── preprod-label-manager.yml      # Add/remove label on /deploy-preprod
+└── preprod-auto-cleanup.yml       # Remove label when PR closes
 
 cicd-app-chart/
-├── values.yaml            # Production configuration
-└── values-preprod.yaml    # Preprod configuration (lighter)
+├── values.yaml                     # Production config
+├── values-preprod.yaml             # Preprod config (lighter)
+└── templates/service.yaml          # Auto-calculates NodePort from prNumber
 ```
 
-## GitHub Workflows
+## How ApplicationSet Works
 
-### Deploy Preprod (`deploy-preprod.yml`)
+The ApplicationSet continuously polls GitHub (every 3 minutes) for:
+- Open Pull Requests
+- With label: `deploy-preprod`
 
-**Trigger**: Comment `/deploy-preprod` on a PR
+For each matching PR, it automatically creates an Application using the template.
 
-**What it does:**
-1. Gets PR details (number, branch, commit SHA)
-2. Renders ArgoCD Application from template
-3. Creates the Application in ArgoCD
-4. Comments on PR with access instructions
+**Pull Request Generator Variables:**
+- `{{number}}`: PR number (e.g., 123)
+- `{{branch}}`: PR branch name
+- `{{head_sha}}`: Commit SHA
+- `{{head_short_sha}}`: Short commit SHA
 
-**Required Secret:**
-- `KUBECONFIG`: Base64-encoded kubeconfig for cluster access
-
-### Cleanup Preprod (`cleanup-preprod.yml`)
-
-**Trigger**: PR closed or merged
-
-**What it does:**
-1. Checks if preprod exists for this PR
-2. Deletes the ArgoCD Application
-3. Deletes the namespace
-4. Comments on PR confirming cleanup
-
-## Setup: Adding KUBECONFIG Secret
-
-For the workflows to work, you need to add your `KUBECONFIG` to GitHub Secrets:
-
-```bash
-# 1. Encode your kubeconfig
-cat ~/.kube/config | base64 -w 0
-
-# 2. Add to GitHub:
-# Go to: Settings → Secrets and variables → Actions → New repository secret
-# Name: KUBECONFIG
-# Value: <paste the base64 output>
-```
+These are automatically substituted in the Application template.
 
 ## Troubleshooting
 
-### Preprod not deploying
+### Preprod not deploying after `/deploy-preprod`
 
-Check the GitHub Action logs:
-- Go to **Actions** tab
-- Click on the failed workflow
-- Review the logs
-
-### Application stuck in "OutOfSync"
-
-The application needs manual sync:
-1. Open ArgoCD UI
-2. Click on your application
-3. Click **Sync** → **Synchronize**
-
-### Can't access preprod
-
-Check if pods are running:
+1. Check the label was added:
 ```bash
-kubectl get pods -n preprod-pr-{NUMBER}
+gh pr view 123 --json labels
 ```
 
-Check service:
+2. Check ApplicationSet is running:
 ```bash
-kubectl get svc -n preprod-pr-{NUMBER}
+kubectl get applicationset -n argocd
+kubectl logs -n argocd deployment/argocd-applicationset-controller
 ```
 
-Port-forward the service:
+3. Wait 3-5 minutes (ApplicationSet polls every 3 min)
+
+4. Force refresh:
 ```bash
-kubectl port-forward -n preprod-pr-{NUMBER} \
-  svc/cicd-project-pr-{NUMBER}-cicd-app-chart 8080:80
+kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller
 ```
 
-### Preprod not cleaned up
+### GitHub token issues
 
-Manually delete:
+Check token is valid:
 ```bash
-# Delete Application (this will cascade delete all resources)
-kubectl delete application cicd-project-pr-{NUMBER} -n argocd
-
-# Delete namespace (if needed)
-kubectl delete namespace preprod-pr-{NUMBER}
+TOKEN=$(kubectl get secret github-token -n argocd -o jsonpath='{.data.token}' | base64 -d)
+curl -H "Authorization: token $TOKEN" \
+  https://api.github.com/repos/damien-mathieu1/cicd-project-nodejs/pulls
 ```
 
-## Advanced Usage
+Should return JSON list of PRs. If `401 Unauthorized`, regenerate the token.
 
-### Deploy multiple preprods
+### Application created but not syncing
 
-You can have multiple PRs with preprods at the same time. Each gets its own:
-- Namespace: `preprod-pr-123`, `preprod-pr-124`, etc.
-- NodePort: `30123`, `30124`, etc.
-- Port-forward: `8123`, `8124`, etc.
+Check Application status:
+```bash
+kubectl get application cicd-project-pr-123 -n argocd -o yaml
+```
 
-### Update preprod after new commits
+The `syncPolicy` is set to `automated`, so it should sync automatically. If not:
+1. Check ArgoCD UI for sync errors
+2. Manually trigger sync in UI
+3. Check repo SSH key is configured
 
-After pushing new commits to your PR branch:
-1. ArgoCD will detect the changes (takes ~3 minutes)
-2. Go to ArgoCD UI
-3. Click **Refresh** → **Hard Refresh**
-4. Click **Sync**
+### Preprod not cleaning up
 
-### Test with custom values
+Check the label was removed:
+```bash
+gh pr view 123 --json labels
+```
 
-You can manually modify the preprod Application in ArgoCD:
-1. Go to ArgoCD UI
-2. Click on your application
-3. Click **App Details** → **Parameters**
-4. Modify values (e.g., increase replicas, change image tag)
-5. Sync
+Manually remove if needed:
+```bash
+gh pr edit 123 --remove-label "deploy-preprod"
+```
+
+Or directly delete the Application:
+```bash
+kubectl delete application cicd-project-pr-123 -n argocd
+```
+
+### Multiple preprods at once
+
+You can have as many preprods as you want (limited by cluster resources). Each PR with the label gets its own isolated environment.
+
+Check all preprods:
+```bash
+kubectl get applications -n argocd -l app.kubernetes.io/environment=preprod
+```
 
 ## Best Practices
 
 ### When to deploy preprod
 
 ✅ **Do deploy preprod when:**
-- Feature is ready for testing
-- You want to show something to the team
-- You need to test integration with other services
-- You want to verify the deployment works
+- Feature is complete and ready for testing
+- You want to demo to the team
+- You need to test integration
+- Before requesting review
 
 ❌ **Don't deploy preprod:**
 - For every commit (wastes resources)
-- Before code is working (test locally first)
-- For draft PRs (unless specifically needed)
+- For draft/WIP PRs (unless specifically needed)
+- If you can test locally
 
 ### Resource Management
 
-Preprods use reduced resources:
-- **App**: 100m CPU / 256Mi RAM (vs unlimited in prod)
-- **PostgreSQL**: 100m CPU / 256Mi RAM, 1Gi storage (vs 8Gi in prod)
-- **Replicas**: 1 (no autoscaling)
+Each preprod uses:
+- **App**: 100m CPU / 256Mi RAM
+- **PostgreSQL**: 100m CPU / 256Mi RAM, 1Gi storage
+- **Total**: ~512Mi RAM per preprod
 
-This allows multiple preprods to run simultaneously without overloading the cluster.
+Monitor cluster resources:
+```bash
+kubectl top nodes
+kubectl top pods -n preprod-pr-123
+```
 
 ### Security
 
-- Preprods use the same secrets as production (database credentials, API keys)
+- The GitHub token has **read-only** access to PRs
 - Each preprod has an isolated database
-- Network policies ensure isolation between preprods
+- Network policies enforce isolation
+- All data is deleted on cleanup
+
+## Advantages Over GitHub Actions Approach
+
+| Feature | GitHub Actions | ApplicationSet |
+|---------|---------------|----------------|
+| **Works with local cluster** | ❌ No | ✅ Yes |
+| **Automatic deployment** | ❌ Manual trigger | ✅ Automatic |
+| **Automatic cleanup** | ✅ Yes | ✅ Yes |
+| **Delay** | Instant | ~3 minutes |
+| **GitOps native** | ❌ No | ✅ Yes |
+| **Requires KUBECONFIG secret** | ✅ Yes | ❌ No (just GitHub token) |
+| **Self-healing** | ❌ No | ✅ Yes |
 
 ## FAQ
 
-**Q: How long does preprod deployment take?**
-A: ~2-3 minutes after clicking Sync in ArgoCD.
+**Q: Why does it take 3 minutes to deploy?**
+A: ApplicationSet polls GitHub every 3 minutes (configurable). This is normal for local clusters.
 
-**Q: Can I redeploy the same preprod?**
-A: Yes, just comment `/deploy-preprod` again. It will update the existing Application.
+**Q: Can I speed up detection?**
+A: Yes, with a GitHub webhook, but that requires exposing ArgoCD to the internet (complex for local setup).
 
-**Q: What happens to preprod data after cleanup?**
-A: All data is deleted (database, files, logs). Make sure to extract what you need before closing the PR.
+**Q: What if I push new commits to the PR?**
+A: ApplicationSet will detect the new commit SHA and ArgoCD will automatically sync the update.
 
-**Q: Can I deploy preprod from a fork?**
-A: No, the workflow only works for branches in the same repository (for security).
+**Q: Can I have preprods for multiple PRs?**
+A: Yes! Each PR with the label gets its own isolated preprod.
 
-**Q: How many preprods can I have?**
-A: Depends on cluster resources. Each preprod uses ~512Mi RAM total. Monitor with `kubectl top nodes`.
+**Q: What happens if I close the PR without merging?**
+A: Same cleanup process - the preprod is automatically deleted.
 
 ## Resources
 
-- [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
-- [GitOps Principles](https://opengitops.dev/)
-- [Helm Values Documentation](https://helm.sh/docs/chart_template_guide/values_files/)
+- [ArgoCD ApplicationSet Documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/application-set/)
+- [Pull Request Generator](https://argo-cd.readthedocs.io/en/stable/operator-manual/applicationset/Generators-Pull-Request/)
+- [GitHub Fine-Grained Tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token)

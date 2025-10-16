@@ -1,0 +1,65 @@
+name: Preprod Auto Cleanup
+
+# Trigger when a Pull Request is closed (merged or just closed)
+# This removes the deploy-preprod label, which triggers ApplicationSet cleanup
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  remove-label:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Remove deploy-preprod label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'deploy-preprod'
+              });
+
+              console.log(`Removed deploy-preprod label from PR #${prNumber}`);
+            } catch (error) {
+              if (error.status === 404) {
+                console.log(`Label 'deploy-preprod' not found on PR #${prNumber}`);
+              } else {
+                throw error;
+              }
+            }
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+
+            const body = `## 🧹 Preprod Cleanup Initiated
+
+            This PR has been closed. The \`deploy-preprod\` label has been removed.
+
+            **ArgoCD ApplicationSet will automatically:**
+            1. Detect the label removal (~3 minutes)
+            2. Delete the Application: \`cicd-project-pr-${prNumber}\`
+            3. Clean up namespace: \`preprod-pr-${prNumber}\`
+            4. Remove all resources (pods, services, database, etc.)
+
+            Thank you for testing! 🎉
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });

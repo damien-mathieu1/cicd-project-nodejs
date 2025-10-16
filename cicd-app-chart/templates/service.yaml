@@ -14,8 +14,13 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
-      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      {{- if eq .Values.service.type "NodePort" }}
+      {{- if .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}
+      {{- else if .Values.prNumber }}
+      # Auto-calculate NodePort: 30000 + PR number
+      nodePort: {{ add 30000 (int .Values.prNumber) }}
+      {{- end }}
       {{- end }}
   selector:
     {{- include "cicd-app-chart.selectorLabels" . | nindent 4 }}

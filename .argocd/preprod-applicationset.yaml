@@ -1,0 +1,99 @@
+# ArgoCD ApplicationSet for Preprod Environments
+# This automatically creates/deletes ArgoCD Applications for Pull Requests
+# that have the "deploy-preprod" label
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cicd-project-preprods
+  namespace: argocd
+spec:
+  # How long to wait before removing an Application after PR is closed (default: 5m)
+  preservedFields:
+    annotations:
+    - github.com/pull-request
+    - github.com/branch
+
+  generators:
+  - pullRequest:
+      github:
+        # GitHub repository to monitor
+        owner: damien-mathieu1
+        repo: cicd-project-nodejs
+
+        # GitHub API token (read-only access to pull requests)
+        tokenRef:
+          secretName: github-token
+          key: token
+
+        # Only create Applications for PRs with this label
+        labels:
+        - deploy-preprod
+
+      # Poll GitHub every 3 minutes for changes
+      requeueAfterSeconds: 180
+
+  # Template for each preprod Application
+  template:
+    metadata:
+      name: 'cicd-project-pr-{{number}}'
+      labels:
+        app.kubernetes.io/environment: preprod
+        app.kubernetes.io/pr: '{{number}}'
+        app.kubernetes.io/managed-by: applicationset
+      annotations:
+        # Link back to the PR
+        github.com/pull-request: 'https://github.com/damien-mathieu1/cicd-project-nodejs/pull/{{number}}'
+        github.com/branch: '{{branch}}'
+        github.com/head-sha: '{{head_sha}}'
+
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+
+    spec:
+      project: default
+
+      source:
+        repoURL: git@github.com:damien-mathieu1/cicd-project-nodejs.git
+        # Deploy from the PR branch
+        targetRevision: '{{head_sha}}'
+        path: cicd-app-chart
+
+        helm:
+          valueFiles:
+            - values-preprod.yaml
+
+          parameters:
+            # Pass PR-specific values
+            - name: prNumber
+              value: '{{number}}'
+            - name: environment
+              value: preprod
+            # Note: NodePort calculation (30000 + PR number) will be done automatically
+            # by the service template when prNumber is set
+            - name: image.tag
+              value: '{{head_short_sha}}'
+            - name: fullnameOverride
+              value: 'cicd-project-pr-{{number}}'
+
+      destination:
+        server: https://kubernetes.default.svc
+        # Isolated namespace per PR
+        namespace: 'preprod-pr-{{number}}'
+
+      syncPolicy:
+        # Automatic sync - no manual intervention needed!
+        automated:
+          prune: true
+          selfHeal: true
+
+        syncOptions:
+          - CreateNamespace=true  # Auto-create the namespace
+
+        # Retry on failure
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
