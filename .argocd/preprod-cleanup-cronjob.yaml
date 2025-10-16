@@ -44,8 +44,8 @@ metadata:
   name: preprod-cleanup
   namespace: default
 spec:
-  # Run every 5 minutes
-  schedule: "*/5 * * * *"
+  # Run every 55 minutes
+  schedule: "*/55 * * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   concurrencyPolicy: Forbid
