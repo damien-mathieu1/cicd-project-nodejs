@@ -40,6 +40,8 @@ spec:
               value: "{{ .Values.sharedPostgres.auth.password }}"
             - name: PREPROD_DB
               value: "app_preprod_pr_{{ .Values.prNumber }}"
+            - name: PGDATABASE
+              value: "postgres"
           command:
             - sh
             - -c
@@ -48,16 +50,16 @@ spec:
               echo "🧹 Cleaning up preprod database: $PREPROD_DB"
 
               # Check if database exists
-              DB_EXISTS=$(psql -U $PGUSER -h $PGHOST -tAc "SELECT 1 FROM pg_database WHERE datname='$PREPROD_DB'")
+              DB_EXISTS=$(psql -U $PGUSER -h $PGHOST -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$PREPROD_DB'")
 
               if [ "$DB_EXISTS" = "1" ]; then
                 echo "🗑️ Dropping database: $PREPROD_DB"
 
                 # Terminate all connections to the database
-                psql -U $PGUSER -h $PGHOST -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PREPROD_DB';"
+                psql -U $PGUSER -h $PGHOST -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PREPROD_DB';"
 
                 # Drop the database
-                psql -U $PGUSER -h $PGHOST -c "DROP DATABASE IF EXISTS $PREPROD_DB;"
+                psql -U $PGUSER -h $PGHOST -d postgres -c "DROP DATABASE IF EXISTS $PREPROD_DB;"
 
                 echo "✅ Database $PREPROD_DB dropped successfully"
               else
