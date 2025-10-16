@@ -1,0 +1,39 @@
+# Configuration for ArgoCD
+argo-cd:
+  # ArgoCD server configuration
+  server:
+    service:
+      type: LoadBalancer
+    # Disable authentication for easier access (only for dev/testing)
+    extraArgs:
+      - --insecure
+
+  # ArgoCD configs
+  configs:
+    params:
+      server.insecure: true
+
+# Configuration for the cicd-project Application
+application:
+  enabled: true
+  name: cicd-project-nodejs
+  namespace: default
+
+  # GitHub repository configuration
+  source:
+    repoURL: git@github.com:damien-mathieu1/cicd-project-nodejs.git
+    targetRevision: main
+    path: cicd-app-chart
+
+  # Destination cluster configuration
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

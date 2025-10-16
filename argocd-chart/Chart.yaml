@@ -1,0 +1,11 @@
+apiVersion: v2
+name: argocd-chart
+description: A Helm chart for deploying ArgoCD and configuring it to deploy the cicd-project-nodejs app
+type: application
+version: 0.1.0
+appVersion: "v2.12.3"
+
+dependencies:
+  - name: argo-cd
+    version: 7.7.7
+    repository: https://argoproj.github.io/argo-helm
