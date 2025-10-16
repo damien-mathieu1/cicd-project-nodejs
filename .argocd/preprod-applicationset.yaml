@@ -8,6 +8,8 @@ metadata:
   name: cicd-project-preprods
   namespace: argocd
 spec:
+  syncPolicy:
+    preserveResourcesOnDeletion: false
   # How long to wait before removing an Application after PR is closed (default: 5m)
   preservedFields:
     annotations:

@@ -12,15 +12,15 @@ kind: ClusterRole
 metadata:
   name: preprod-cleanup
 rules:
-  # Need to list Applications to find orphaned namespaces
+  # Need to list Applications to find orphaned databases
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
     verbs: ["get", "list"]
-  # Need to manage namespaces
+  # Need to list namespaces to find preprod environments
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "list", "delete"]
-  # Need to exec into PostgreSQL pod
+    verbs: ["get", "list"]
+  # Need to exec into PostgreSQL pod to drop databases
   - apiGroups: [""]
     resources: ["pods", "pods/exec"]
     verbs: ["get", "list", "create"]
@@ -73,47 +73,64 @@ spec:
                 - -c
                 - |
                   set -e
-                  echo "🔍 Starting preprod cleanup check..."
+                  echo "🔍 Starting preprod database cleanup check..."
 
-                  # Find all preprod namespaces
-                  PREPROD_NAMESPACES=$(kubectl get namespaces -o name | grep "namespace/preprod-pr-" | sed 's|namespace/||')
+                  # Get list of all preprod databases from PostgreSQL
+                  echo "📋 Fetching preprod databases from PostgreSQL..."
+                  PREPROD_DBS=$(kubectl exec -n $POSTGRES_NAMESPACE $POSTGRES_POD -- sh -c "
+                    PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -tAc \"SELECT datname FROM pg_database WHERE datname LIKE 'app_preprod_pr_%';\"
+                  " 2>/dev/null | tr -d ' ')
 
-                  if [ -z "$PREPROD_NAMESPACES" ]; then
-                    echo "✅ No preprod namespaces found, nothing to clean"
+                  if [ -z "$PREPROD_DBS" ]; then
+                    echo "✅ No preprod databases found, nothing to clean"
                     exit 0
                   fi
 
-                  echo "📋 Found preprod namespaces: $PREPROD_NAMESPACES"
+                  echo "📋 Found preprod databases: $(echo $PREPROD_DBS | tr '\n' ' ')"
 
-                  # Get list of ArgoCD Applications
-                  ARGOCD_APPS=$(kubectl get applications -n argocd -o name | grep "application/cicd-project-pr-" | sed 's|application/cicd-project-pr-||')
+                  # Get list of active ArgoCD Applications
+                  ARGOCD_APPS=$(kubectl get applications -n argocd -o name 2>/dev/null | grep "application/cicd-project-pr-" | sed 's|application/cicd-project-pr-||' || echo "")
 
                   echo "📋 Active ArgoCD Applications: $ARGOCD_APPS"
 
-                  # Check each preprod namespace
-                  for ns in $PREPROD_NAMESPACES; do
-                    # Extract PR number from namespace (preprod-pr-X -> X)
-                    PR_NUM=$(echo $ns | sed 's/preprod-pr-//')
+                  # Check each database
+                  for db in $PREPROD_DBS; do
+                    # Safety check: ensure it's really a preprod database (must start with app_preprod_pr_)
+                    if ! echo "$db" | grep -q "^app_preprod_pr_"; then
+                      echo "⚠️ Database $db does not match preprod pattern, skipping for safety"
+                      continue
+                    fi
+
+                    # Extract PR number from database name (app_preprod_pr_X -> X)
+                    PR_NUM=$(echo $db | sed 's/app_preprod_pr_//')
+
+                    # Additional safety: PR number must be numeric
+                    if ! echo "$PR_NUM" | grep -qE '^[0-9]+$'; then
+                      echo "⚠️ Database $db has invalid PR number '$PR_NUM', skipping for safety"
+                      continue
+                    fi
 
                     # Check if there's a corresponding ArgoCD Application
                     if echo "$ARGOCD_APPS" | grep -q "^${PR_NUM}$"; then
-                      echo "✅ Namespace $ns has active Application, skipping"
+                      echo "✅ Database $db has active Application, skipping"
                     else
-                      echo "🗑️ Namespace $ns is orphaned, cleaning up..."
+                      echo "🗑️ Database $db is orphaned..."
 
-                      # Drop the database first
-                      DB_NAME="app_preprod_pr_${PR_NUM}"
-                      echo "🗄️ Dropping database: $DB_NAME"
+                      # Check if corresponding namespace exists
+                      NS_NAME="preprod-pr-${PR_NUM}"
+                      if kubectl get namespace $NS_NAME >/dev/null 2>&1; then
+                        echo "⏳ Namespace $NS_NAME still exists, waiting for ArgoCD to delete it first"
+                      else
+                        echo "✅ Namespace $NS_NAME does not exist, dropping database..."
 
-                      kubectl exec -n $POSTGRES_NAMESPACE $POSTGRES_POD -- sh -c "
-                        PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME';\" || true
-                        PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"DROP DATABASE IF EXISTS $DB_NAME;\"
-                      " && echo "✅ Database $DB_NAME dropped" || echo "⚠️ Failed to drop database $DB_NAME"
-
-                      # Delete the namespace
-                      echo "🗑️ Deleting namespace: $ns"
-                      kubectl delete namespace $ns --timeout=60s && echo "✅ Namespace $ns deleted" || echo "⚠️ Failed to delete namespace $ns"
+                        # Drop the database
+                        echo "🗄️ Dropping database: $db"
+                        kubectl exec -n $POSTGRES_NAMESPACE $POSTGRES_POD -- sh -c "
+                          PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db';\" || true
+                          PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"DROP DATABASE IF EXISTS $db;\"
+                        " && echo "✅ Database $db dropped" || echo "⚠️ Failed to drop database $db"
+                      fi
                     fi
                   done
 
-                  echo "🎉 Cleanup check completed"
+                  echo "🎉 Database cleanup check completed"
