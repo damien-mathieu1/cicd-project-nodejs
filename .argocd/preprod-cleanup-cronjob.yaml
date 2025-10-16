@@ -1,0 +1,119 @@
+# CronJob for automatic cleanup of orphaned preprod environments
+# This job runs every 5 minutes and cleans up namespaces that don't have a corresponding ArgoCD Application
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: preprod-cleanup
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: preprod-cleanup
+rules:
+  # Need to list Applications to find orphaned namespaces
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list"]
+  # Need to manage namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "delete"]
+  # Need to exec into PostgreSQL pod
+  - apiGroups: [""]
+    resources: ["pods", "pods/exec"]
+    verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: preprod-cleanup
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: preprod-cleanup
+subjects:
+  - kind: ServiceAccount
+    name: preprod-cleanup
+    namespace: default
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: preprod-cleanup
+  namespace: default
+spec:
+  # Run every 5 minutes
+  schedule: "*/5 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          serviceAccountName: preprod-cleanup
+          restartPolicy: Never
+          containers:
+            - name: cleanup
+              image: bitnami/kubectl:latest
+              env:
+                - name: POSTGRES_POD
+                  value: "cicd-project-nodejs-postgresql-0"
+                - name: POSTGRES_NAMESPACE
+                  value: "default"
+                - name: PGUSER
+                  value: "root"
+                - name: PGPASSWORD
+                  value: "root"
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  echo "🔍 Starting preprod cleanup check..."
+
+                  # Find all preprod namespaces
+                  PREPROD_NAMESPACES=$(kubectl get namespaces -o name | grep "namespace/preprod-pr-" | sed 's|namespace/||')
+
+                  if [ -z "$PREPROD_NAMESPACES" ]; then
+                    echo "✅ No preprod namespaces found, nothing to clean"
+                    exit 0
+                  fi
+
+                  echo "📋 Found preprod namespaces: $PREPROD_NAMESPACES"
+
+                  # Get list of ArgoCD Applications
+                  ARGOCD_APPS=$(kubectl get applications -n argocd -o name | grep "application/cicd-project-pr-" | sed 's|application/cicd-project-pr-||')
+
+                  echo "📋 Active ArgoCD Applications: $ARGOCD_APPS"
+
+                  # Check each preprod namespace
+                  for ns in $PREPROD_NAMESPACES; do
+                    # Extract PR number from namespace (preprod-pr-X -> X)
+                    PR_NUM=$(echo $ns | sed 's/preprod-pr-//')
+
+                    # Check if there's a corresponding ArgoCD Application
+                    if echo "$ARGOCD_APPS" | grep -q "^${PR_NUM}$"; then
+                      echo "✅ Namespace $ns has active Application, skipping"
+                    else
+                      echo "🗑️ Namespace $ns is orphaned, cleaning up..."
+
+                      # Drop the database first
+                      DB_NAME="app_preprod_pr_${PR_NUM}"
+                      echo "🗄️ Dropping database: $DB_NAME"
+
+                      kubectl exec -n $POSTGRES_NAMESPACE $POSTGRES_POD -- sh -c "
+                        PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME';\" || true
+                        PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"DROP DATABASE IF EXISTS $DB_NAME;\"
+                      " && echo "✅ Database $DB_NAME dropped" || echo "⚠️ Failed to drop database $DB_NAME"
+
+                      # Delete the namespace
+                      echo "🗑️ Deleting namespace: $ns"
+                      kubectl delete namespace $ns --timeout=60s && echo "✅ Namespace $ns deleted" || echo "⚠️ Failed to delete namespace $ns"
+                    fi
+                  done
+
+                  echo "🎉 Cleanup check completed"
