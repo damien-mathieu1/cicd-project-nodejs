@@ -72,7 +72,7 @@ spec:
             # Note: NodePort calculation (30000 + PR number) will be done automatically
             # by the service template when prNumber is set
             - name: image.tag
-              value: '{{head_short_sha}}'
+              value: '{{head_sha}}'
             - name: fullnameOverride
               value: 'cicd-project-pr-{{number}}'
 
@@ -89,6 +89,7 @@ spec:
 
         syncOptions:
           - CreateNamespace=true  # Auto-create the namespace
+          - PruneLast=true        # Prune resources last (cleanup job runs first)
 
         # Retry on failure
         retry:

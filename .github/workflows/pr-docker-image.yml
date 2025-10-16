@@ -1,0 +1,86 @@
+name: PR - Docker Image
+
+# Trigger ONLY on pull request events (not on push)
+# This prevents double builds when pushing to PR branches
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-and-push-pr-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Docker Hub login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract commit SHA
+        id: vars
+        run: |
+          echo "full_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        id: build-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          github-token: ${{ secrets.TOKEN_GITHUB }}
+          load: true
+
+      - name: Run Trivy Scanner for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: 0  # Don't fail on vulnerabilities for PRs
+
+      - name: Push Docker image
+        if: success()
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          cache-from: type=gha
+          github-token: ${{ secrets.TOKEN_GITHUB }}
+
+      - name: Comment on PR with image tag
+        if: success() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fullSha = '${{ steps.vars.outputs.full_sha }}';
+            const body = `## 🐋 Docker Image Built and Pushed
+
+            **Image tag:**
+            - \`damienmathieu/city-api:${fullSha}\`
+
+            **Pull command:**
+            \`\`\`bash
+            docker pull damienmathieu/city-api:${fullSha}
+            \`\`\`
+
+            This image will be automatically deployed to preprod when you add the \`deploy-preprod\` label.`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });

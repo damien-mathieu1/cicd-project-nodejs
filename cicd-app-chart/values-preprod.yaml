@@ -18,32 +18,26 @@ image:
 
 appKey: 'Pg_e79wvsahZGUYC5dmZ3c2BpmUteW_l'
 
-# PostgreSQL configuration for preprod (lighter)
+# PostgreSQL configuration for preprod
+# We use the shared PostgreSQL from the default namespace (production)
+# Each preprod gets its own database within that shared PostgreSQL instance
 postgresql:
-  enabled: true
+  enabled: false  # Don't deploy a separate PostgreSQL for preprod
+
+# Shared PostgreSQL connection settings
+# Preprods connect to the production PostgreSQL instance in default namespace
+sharedPostgres:
+  # Service name of the production PostgreSQL
+  host: "cicd-project-nodejs-postgresql.default.svc.cluster.local"
+  port: 5432
+  # Auth credentials (same as production)
   auth:
     username: root
     password: root
-    database: app
-
-  # Reduced resources for preprod database
-  primary:
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 100m
-        memory: 256Mi
-
-    # Smaller persistent volume for preprod
-    persistence:
-      enabled: true
-      size: 1Gi  # vs 8Gi default in prod
-
-  # Disable backup for preprod (ephemeral)
-  backup:
-    enabled: false
+    # Production database name (used as source for cloning)
+    productionDatabase: app
+    # Preprod database name pattern: app_preprod_pr_{number}
+    # Will be created by init container
 
 # Service configuration
 service:

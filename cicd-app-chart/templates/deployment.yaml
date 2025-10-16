@@ -32,6 +32,53 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and .Values.prNumber .Values.sharedPostgres }}
+      # Init container for preprod: creates and clones database
+      initContainers:
+        - name: init-db
+          image: postgres:16
+          env:
+            - name: PGHOST
+              value: "{{ .Values.sharedPostgres.host }}"
+            - name: PGPORT
+              value: "{{ .Values.sharedPostgres.port }}"
+            - name: PGUSER
+              value: "{{ .Values.sharedPostgres.auth.username }}"
+            - name: PGPASSWORD
+              value: "{{ .Values.sharedPostgres.auth.password }}"
+            - name: PROD_DB
+              value: "{{ .Values.sharedPostgres.auth.productionDatabase }}"
+            - name: PREPROD_DB
+              value: "app_preprod_pr_{{ .Values.prNumber }}"
+            - name: PGDATABASE
+              value: "postgres"
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "🔍 Checking if preprod database exists..."
+
+              # Check if database already exists
+              DB_EXISTS=$(psql -U $PGUSER -h $PGHOST -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$PREPROD_DB'")
+
+              if [ "$DB_EXISTS" = "1" ]; then
+                echo "✅ Database $PREPROD_DB already exists, skipping creation"
+              else
+                echo "🗄️ Creating preprod database: $PREPROD_DB"
+                psql -U $PGUSER -h $PGHOST -d postgres -c "CREATE DATABASE $PREPROD_DB;"
+
+                echo "📋 Cloning schema from production database: $PROD_DB"
+                pg_dump -U $PGUSER -h $PGHOST -d $PROD_DB --schema-only --no-owner --no-acl | \
+                  psql -U $PGUSER -h $PGHOST -d $PREPROD_DB
+
+                echo "📦 Cloning data from production database: $PROD_DB"
+                pg_dump -U $PGUSER -h $PGHOST -d $PROD_DB --data-only --no-owner --no-acl | \
+                  psql -U $PGUSER -h $PGHOST -d $PREPROD_DB
+
+                echo "✅ Database $PREPROD_DB created and populated successfully"
+              fi
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           {{- with .Values.securityContext }}
@@ -57,6 +104,20 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: "{{ .Values.service.port }}"
+            {{- if .Values.sharedPostgres }}
+            # Preprod: connect to shared PostgreSQL
+            - name: DB_HOST
+              value: "{{ .Values.sharedPostgres.host }}"
+            - name: DB_USER
+              value: "{{ .Values.sharedPostgres.auth.username }}"
+            - name: DB_PASSWORD
+              value: "{{ .Values.sharedPostgres.auth.password }}"
+            - name: DB_PORT
+              value: "{{ .Values.sharedPostgres.port }}"
+            - name: DB_DATABASE
+              value: "app_preprod_pr_{{ .Values.prNumber }}"
+            {{- else }}
+            # Production: connect to dedicated PostgreSQL
             - name: DB_HOST
               value: "{{ .Release.Name }}-postgresql"
             - name: DB_USER
@@ -67,6 +128,7 @@ spec:
               value: "5432"
             - name: DB_DATABASE
               value: "{{ .Values.postgresql.auth.database }}"
+            {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
