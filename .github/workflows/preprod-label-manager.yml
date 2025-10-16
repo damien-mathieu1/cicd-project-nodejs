@@ -1,0 +1,165 @@
+name: Preprod Label Manager
+
+# Trigger when someone comments on a Pull Request
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  manage-preprod-label:
+    # Only run on PR comments, not issue comments
+    if: github.event.issue.pull_request
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check comment for /deploy-preprod
+        id: check_deploy
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          if [[ "$COMMENT" == *"/deploy-preprod"* ]]; then
+            echo "action=deploy" >> $GITHUB_OUTPUT
+          elif [[ "$COMMENT" == *"/destroy-preprod"* ]]; then
+            echo "action=destroy" >> $GITHUB_OUTPUT
+          else
+            echo "action=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: React with eyes
+        if: steps.check_deploy.outputs.action != 'none'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes'
+            });
+
+      - name: Add deploy-preprod label
+        if: steps.check_deploy.outputs.action == 'deploy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['deploy-preprod']
+            });
+
+      - name: Comment deployment started
+        if: steps.check_deploy.outputs.action == 'deploy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const nodePort = 30000 + prNumber;
+
+            const body = `## 🚀 Preprod Deployment Initiated
+
+            The \`deploy-preprod\` label has been added to this PR.
+
+            **What happens next:**
+            1. ArgoCD ApplicationSet will detect the label (takes ~3 minutes)
+            2. ArgoCD will automatically create the Application: \`cicd-project-pr-${prNumber}\`
+            3. The preprod will be deployed to namespace: \`preprod-pr-${prNumber}\`
+            4. The deployment will sync automatically
+
+            ### Access (once deployed)
+            \`\`\`bash
+            # Port-forward to access the preprod
+            kubectl port-forward -n preprod-pr-${prNumber} \\
+              svc/cicd-project-pr-${prNumber}-cicd-app-chart 8${prNumber}:80
+
+            # Then open: http://localhost:8${prNumber}
+
+            # Or via NodePort (if you have node external IP):
+            # http://<node-ip>:${nodePort}
+            \`\`\`
+
+            ### Monitor
+            - **ArgoCD UI**: http://localhost:8080/applications/cicd-project-pr-${prNumber}
+            - **Check pods**: \`kubectl get pods -n preprod-pr-${prNumber}\`
+
+            ⏱️ **Wait ~3-5 minutes** for ArgoCD to detect and deploy.
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: Remove deploy-preprod label
+        if: steps.check_deploy.outputs.action == 'destroy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                name: 'deploy-preprod'
+              });
+            } catch (error) {
+              // Label might not exist, ignore
+              console.log('Label not found or already removed');
+            }
+
+      - name: Comment destruction started
+        if: steps.check_deploy.outputs.action == 'destroy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.issue.number;
+
+            const body = `## 🧹 Preprod Destruction Initiated
+
+            The \`deploy-preprod\` label has been removed from this PR.
+
+            **What happens next:**
+            1. ArgoCD ApplicationSet will detect the label removal (takes ~3 minutes)
+            2. ArgoCD will automatically delete the Application: \`cicd-project-pr-${prNumber}\`
+            3. All resources in namespace \`preprod-pr-${prNumber}\` will be cleaned up
+
+            ⏱️ **Wait ~3-5 minutes** for complete cleanup.
+            `;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+      - name: React with rocket on deploy
+        if: steps.check_deploy.outputs.action == 'deploy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: React with wastebasket on destroy
+        if: steps.check_deploy.outputs.action == 'destroy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: '-1'
+            });

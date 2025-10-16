@@ -1,0 +1,56 @@
+# ArgoCD Application template for preprod environments
+# This file will be used by GitHub Actions to create preprod deployments
+# Variables to replace:
+#   - {{PR_NUMBER}}: Pull Request number (e.g., 123)
+#   - {{PR_BRANCH}}: Pull Request branch name (e.g., feat/awesome-feature)
+#   - {{PR_HEAD_SHA}}: Commit SHA of the PR head
+#   - {{NODEPORT}}: NodePort for the service (30000 + PR_NUMBER)
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cicd-project-pr-{{PR_NUMBER}}
+  namespace: argocd
+  labels:
+    app.kubernetes.io/environment: preprod
+    app.kubernetes.io/pr: "{{PR_NUMBER}}"
+    app.kubernetes.io/managed-by: github-actions
+  annotations:
+    # Link back to the PR
+    github.com/pull-request: "https://github.com/damien-mathieu1/cicd-project-nodejs/pull/{{PR_NUMBER}}"
+    github.com/branch: "{{PR_BRANCH}}"
+    github.com/commit: "{{PR_HEAD_SHA}}"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: git@github.com:damien-mathieu1/cicd-project-nodejs.git
+    targetRevision: "{{PR_BRANCH}}"  # Deploy from the PR branch
+    path: cicd-app-chart
+    helm:
+      valueFiles:
+        - values-preprod.yaml  # Use preprod configuration
+      parameters:
+        # Override values for this specific preprod
+        - name: prNumber
+          value: "{{PR_NUMBER}}"
+        - name: environment
+          value: preprod
+        - name: service.nodePort
+          value: "{{NODEPORT}}"
+        - name: image.tag
+          value: "{{PR_HEAD_SHA}}"  # Deploy the exact commit from the PR
+        - name: fullnameOverride
+          value: cicd-project-pr-{{PR_NUMBER}}
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: preprod-pr-{{PR_NUMBER}}  # Isolated namespace per PR
+
+  # Manual sync - dev decides when to deploy
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true  # Auto-create the preprod namespace
+    # No automated sync - manual deployment only

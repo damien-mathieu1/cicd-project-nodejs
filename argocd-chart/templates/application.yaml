@@ -4,6 +4,8 @@ kind: Application
 metadata:
   name: {{ .Values.application.name }}
   namespace: argocd
+  labels:
+    app.kubernetes.io/environment: {{ .Values.application.environment | default "production" }}
   annotations:
     argocd.argoproj.io/sync-wave: "1"
     helm.sh/hook: post-install,post-upgrade
@@ -17,9 +19,14 @@ spec:
     repoURL: {{ .Values.application.source.repoURL }}
     targetRevision: {{ .Values.application.source.targetRevision }}
     path: {{ .Values.application.source.path }}
+    {{- if .Values.application.source.helm }}
+    helm:
+      {{- toYaml .Values.application.source.helm | nindent 6 }}
+    {{- else }}
     helm:
       valueFiles:
         - values.yaml
+    {{- end }}
 
   destination:
     server: {{ .Values.application.destination.server }}
