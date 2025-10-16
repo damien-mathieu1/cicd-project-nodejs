@@ -1,0 +1,14 @@
+{{- if .Values.prNumber }}
+# Namespace resource for preprod environments
+# This allows ArgoCD to manage and delete the namespace automatically
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    {{- include "cicd-app-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/environment: preprod
+    app.kubernetes.io/pr: "{{ .Values.prNumber }}"
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=true
+{{- end }}
