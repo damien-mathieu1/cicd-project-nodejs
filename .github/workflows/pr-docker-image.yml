@@ -1,10 +1,8 @@
 name: PR - Docker Image
 
-# Trigger on push to PR branches (not main)
+# Trigger ONLY on pull request events (not on push)
+# This prevents double builds when pushing to PR branches
 on:
-  push:
-    branches-ignore:
-      - main
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -30,7 +28,7 @@ jobs:
       - name: Extract commit SHA
         id: vars
         run: |
-          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "short_sha=$(git rev-parse --short=8 HEAD)" >> $GITHUB_OUTPUT
           echo "full_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
