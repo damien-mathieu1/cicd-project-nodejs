@@ -25,10 +25,10 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract commit SHA
+      - name: Extract PR number
         id: vars
         run: |
-          echo "full_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
         id: build-image
@@ -36,7 +36,7 @@ jobs:
         with:
           context: .
           push: false
-          tags: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          tags: damienmathieu/city-api:pr-${{ steps.vars.outputs.pr_number }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           github-token: ${{ secrets.TOKEN_GITHUB }}
@@ -45,7 +45,7 @@ jobs:
       - name: Run Trivy Scanner for vulnerabilities
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          image-ref: damienmathieu/city-api:pr-${{ steps.vars.outputs.pr_number }}
           format: table
           severity: HIGH,CRITICAL
           exit-code: 0  # Don't fail on vulnerabilities for PRs
@@ -56,7 +56,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: damienmathieu/city-api:${{ steps.vars.outputs.full_sha }}
+          tags: damienmathieu/city-api:pr-${{ steps.vars.outputs.pr_number }}
           cache-from: type=gha
           github-token: ${{ secrets.TOKEN_GITHUB }}
 
@@ -65,15 +65,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fullSha = '${{ steps.vars.outputs.full_sha }}';
+            const prNumber = '${{ steps.vars.outputs.pr_number }}';
             const body = `## 🐋 Docker Image Built and Pushed
 
             **Image tag:**
-            - \`damienmathieu/city-api:${fullSha}\`
+            - \`damienmathieu/city-api:pr-${prNumber}\`
 
             **Pull command:**
             \`\`\`bash
-            docker pull damienmathieu/city-api:${fullSha}
+            docker pull damienmathieu/city-api:pr-${prNumber}
             \`\`\`
 
             This image will be automatically deployed to preprod when you add the \`deploy-preprod\` label.`;
