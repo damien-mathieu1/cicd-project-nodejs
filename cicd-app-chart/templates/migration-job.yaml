@@ -26,6 +26,20 @@ spec:
             value: "cookie"
           - name: NODE_ENV
             value: "production"
+          {{- if .Values.sharedPostgres }}
+          # Preprod: connect to shared PostgreSQL
+          - name: DB_HOST
+            value: "{{ .Values.sharedPostgres.host }}"
+          - name: DB_USER
+            value: "{{ .Values.sharedPostgres.auth.username }}"
+          - name: DB_PASSWORD
+            value: "{{ .Values.sharedPostgres.auth.password }}"
+          - name: DB_PORT
+            value: "{{ .Values.sharedPostgres.port }}"
+          - name: DB_DATABASE
+            value: "app_preprod_pr_{{ .Values.prNumber }}"
+          {{- else }}
+          # Production: connect to dedicated PostgreSQL
           - name: DB_HOST
             value: "{{ .Release.Name }}-postgresql"
           - name: DB_USER
@@ -36,4 +50,5 @@ spec:
             value: "5432"
           - name: DB_DATABASE
             value: "{{ .Values.postgresql.auth.database }}"
+          {{- end }}
       restartPolicy: Never
