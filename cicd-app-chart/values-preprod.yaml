@@ -1,0 +1,99 @@
+# Preprod-specific values
+# This file contains configuration optimized for ephemeral preprod environments
+# These values override the default values.yaml for pull request deployments
+
+# Environment identifier (will be overridden by workflow with PR number)
+environment: preprod
+prNumber: ""  # Will be set dynamically: pr-123
+
+# Reduced replica count for preprod (save resources)
+replicaCount: 1
+
+# Image configuration
+image:
+  repository: damienmathieu/city-api
+  pullPolicy: Always
+  # Tag will be overridden to match the PR branch
+  tag: latest
+
+appKey: 'Pg_e79wvsahZGUYC5dmZ3c2BpmUteW_l'
+
+# PostgreSQL configuration for preprod (lighter)
+postgresql:
+  enabled: true
+  auth:
+    username: root
+    password: root
+    database: app
+
+  # Reduced resources for preprod database
+  primary:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+    # Smaller persistent volume for preprod
+    persistence:
+      enabled: true
+      size: 1Gi  # vs 8Gi default in prod
+
+  # Disable backup for preprod (ephemeral)
+  backup:
+    enabled: false
+
+# Service configuration
+service:
+  type: NodePort  # Use NodePort for easy access in preprod
+  port: 80
+  # NodePort will be calculated: 30000 + PR number
+  # Example: PR #123 -> NodePort 30123
+  nodePort: null  # Will be set dynamically by workflow
+
+# Ingress disabled by default (using NodePort instead)
+ingress:
+  enabled: false
+
+# Reduced resource limits for preprod app
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Health checks (same as prod but with more lenient timeouts)
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 5
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Autoscaling disabled for preprod
+autoscaling:
+  enabled: false
+
+# Pod labels for identification
+podLabels:
+  environment: preprod
+
+# Pod annotations
+podAnnotations:
+  # Add PR info for visibility
+  app.kubernetes.io/environment: preprod

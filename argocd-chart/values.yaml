@@ -13,27 +13,12 @@ argo-cd:
     params:
       server.insecure: true
 
-# Configuration for the cicd-project Application
+# Application management has been moved to .argocd/ directory
+# Production: .argocd/production-application.yaml
+# Preprod: .argocd/preprod-application-template.yaml
+#
+# To deploy production after installing ArgoCD:
+#   kubectl apply -f .argocd/production-application.yaml
+
 application:
-  enabled: true
-  name: cicd-project-nodejs
-  namespace: default
-
-  # GitHub repository configuration
-  source:
-    repoURL: git@github.com:damien-mathieu1/cicd-project-nodejs.git
-    targetRevision: main
-    path: cicd-app-chart
-
-  # Destination cluster configuration
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
-
-  # Sync policy
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  enabled: false  # Applications are now managed separately

@@ -120,7 +120,22 @@ kubectl get secret argocd-initial-admin-secret -n argocd \
   -o jsonpath="{.data.password}" | base64 -d && echo
 ```
 
-### Step 7: Verify Deployment
+### Step 7: Deploy the Production Application
+
+Now that ArgoCD is installed, deploy your production application:
+
+```bash
+kubectl apply -f .argocd/production-application.yaml
+```
+
+Wait for the application to sync:
+
+```bash
+kubectl wait --for=jsonpath='{.status.sync.status}'=Synced \
+  application/cicd-project-nodejs -n argocd --timeout=600s
+```
+
+### Step 8: Verify Deployment
 
 Check the application status:
 

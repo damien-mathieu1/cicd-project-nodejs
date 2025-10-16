@@ -4,6 +4,9 @@ metadata:
   name: {{ include "cicd-app-chart.fullname" . }}
   labels:
     {{- include "cicd-app-chart.labels" . | nindent 4 }}
+    {{- if .Values.prNumber }}
+    app.kubernetes.io/pr: "{{ .Values.prNumber }}"
+    {{- end }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -11,5 +14,8 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
   selector:
     {{- include "cicd-app-chart.selectorLabels" . | nindent 4 }}
