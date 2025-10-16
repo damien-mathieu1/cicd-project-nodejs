@@ -59,28 +59,3 @@ jobs:
           tags: damienmathieu/city-api:pr-${{ steps.vars.outputs.pr_number }}
           cache-from: type=gha
           github-token: ${{ secrets.TOKEN_GITHUB }}
-
-      - name: Comment on PR with image tag
-        if: success() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const prNumber = '${{ steps.vars.outputs.pr_number }}';
-            const body = `## 🐋 Docker Image Built and Pushed
-
-            **Image tag:**
-            - \`damienmathieu/city-api:pr-${prNumber}\`
-
-            **Pull command:**
-            \`\`\`bash
-            docker pull damienmathieu/city-api:pr-${prNumber}
-            \`\`\`
-
-            This image will be automatically deployed to preprod when you add the \`deploy-preprod\` label.`;
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: body
-            });
