@@ -44,8 +44,8 @@ metadata:
   name: preprod-cleanup
   namespace: default
 spec:
-  # Run every 5 minutes
-  schedule: "*/5 * * * *"
+  # Run every 55 minutes
+  schedule: "*/55 * * * *"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   concurrencyPolicy: Forbid
@@ -99,20 +99,25 @@ spec:
                     if echo "$ARGOCD_APPS" | grep -q "^${PR_NUM}$"; then
                       echo "✅ Namespace $ns has active Application, skipping"
                     else
-                      echo "🗑️ Namespace $ns is orphaned, cleaning up..."
+                      echo "🗑️ Namespace $ns is orphaned, checking pods..."
 
-                      # Drop the database first
-                      DB_NAME="app_preprod_pr_${PR_NUM}"
-                      echo "🗄️ Dropping database: $DB_NAME"
+                      # Check if namespace has any pods
+                      POD_COUNT=$(kubectl get pods -n $ns --no-headers 2>/dev/null | wc -l)
 
-                      kubectl exec -n $POSTGRES_NAMESPACE $POSTGRES_POD -- sh -c "
-                        PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME';\" || true
-                        PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"DROP DATABASE IF EXISTS $DB_NAME;\"
-                      " && echo "✅ Database $DB_NAME dropped" || echo "⚠️ Failed to drop database $DB_NAME"
+                      if [ "$POD_COUNT" -eq 0 ]; then
+                        echo "✅ Namespace $ns is empty (no pods), cleaning up database..."
 
-                      # Delete the namespace
-                      echo "🗑️ Deleting namespace: $ns"
-                      kubectl delete namespace $ns --timeout=60s && echo "✅ Namespace $ns deleted" || echo "⚠️ Failed to delete namespace $ns"
+                        # Drop the database
+                        DB_NAME="app_preprod_pr_${PR_NUM}"
+                        echo "🗄️ Dropping database: $DB_NAME"
+
+                        kubectl exec -n $POSTGRES_NAMESPACE $POSTGRES_POD -- sh -c "
+                          PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB_NAME';\" || true
+                          PGPASSWORD=$PGPASSWORD psql -U $PGUSER -d postgres -c \"DROP DATABASE IF EXISTS $DB_NAME;\"
+                        " && echo "✅ Database $DB_NAME dropped" || echo "⚠️ Failed to drop database $DB_NAME"
+                      else
+                        echo "⚠️ Namespace $ns still has $POD_COUNT pod(s), skipping database cleanup"
+                      fi
                     fi
                   done
 

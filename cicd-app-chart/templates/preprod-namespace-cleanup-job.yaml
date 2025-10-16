@@ -1,0 +1,115 @@
+{{- if .Values.prNumber }}
+# Namespace cleanup job for preprod environments
+# This job runs when ArgoCD deletes the Application (PreDelete hook)
+# It waits for all pods to be deleted, then deletes the namespace
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+  labels:
+    {{- include "cicd-app-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+  labels:
+    {{- include "cicd-app-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "pods"]
+    verbs: ["get", "list", "delete", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+  labels:
+    {{- include "cicd-app-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/sync-wave: "-1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+  labels:
+    {{- include "cicd-app-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+  annotations:
+    argocd.argoproj.io/hook: PreDelete
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      name: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+      labels:
+        {{- include "cicd-app-chart.labels" . | nindent 8 }}
+        app.kubernetes.io/component: cleanup
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "cicd-app-chart.fullname" . }}-ns-cleanup
+      containers:
+        - name: cleanup-namespace
+          image: bitnami/kubectl:latest
+          env:
+            - name: NAMESPACE
+              value: "{{ .Release.Namespace }}"
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "🗑️ Waiting for all pods in namespace $NAMESPACE to be deleted..."
+
+              # Wait for all pods to be deleted (max 2 minutes)
+              TIMEOUT=120
+              ELAPSED=0
+              while [ $ELAPSED -lt $TIMEOUT ]; do
+                POD_COUNT=$(kubectl get pods -n $NAMESPACE --no-headers 2>/dev/null | grep -v "Terminating" | wc -l)
+
+                if [ "$POD_COUNT" -eq 0 ]; then
+                  echo "✅ All pods deleted, proceeding with namespace deletion"
+                  break
+                fi
+
+                echo "⏳ Still $POD_COUNT pod(s) running, waiting..."
+                sleep 5
+                ELAPSED=$((ELAPSED + 5))
+              done
+
+              if [ $ELAPSED -ge $TIMEOUT ]; then
+                echo "⚠️ Timeout waiting for pods to terminate, force deleting namespace anyway"
+              fi
+
+              # Delete the namespace
+              echo "🗑️ Deleting namespace: $NAMESPACE"
+              kubectl delete namespace $NAMESPACE --timeout=60s
+
+              echo "✅ Namespace $NAMESPACE deleted successfully"
+              echo "🎉 Cleanup completed"
+{{- end }}
