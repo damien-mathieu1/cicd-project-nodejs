@@ -47,9 +47,13 @@ service:
   # Example: PR #123 -> NodePort 30123
   nodePort: null  # Will be set dynamically by workflow
 
-# Ingress disabled by default (using NodePort instead)
+# Ingress configuration for preprod
+# Host will be automatically generated as: pr-{NUMBER}.app.local
 ingress:
-  enabled: false
+  enabled: true
+  className: 'traefik'
+  domain: 'app.local'
+  annotations: {}
 
 # Reduced resource limits for preprod app
 resources:
