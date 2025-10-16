@@ -72,7 +72,7 @@ spec:
             # Note: NodePort calculation (30000 + PR number) will be done automatically
             # by the service template when prNumber is set
             - name: image.tag
-              value: '{{head_sha}}'
+              value: 'pr-{{number}}'
             - name: fullnameOverride
               value: 'cicd-project-pr-{{number}}'
 
